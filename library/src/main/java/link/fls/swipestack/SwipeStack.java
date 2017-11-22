@@ -19,6 +19,7 @@ package link.fls.swipestack;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.database.DataSetObserver;
+import android.graphics.Paint;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
@@ -27,15 +28,15 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Adapter;
-import android.widget.FrameLayout;
 
 import java.util.Random;
 
 public class SwipeStack extends ViewGroup {
-
     public static final int SWIPE_DIRECTION_BOTH = 0;
     public static final int SWIPE_DIRECTION_ONLY_LEFT = 1;
     public static final int SWIPE_DIRECTION_ONLY_RIGHT = 2;
+    public static final int SWIPE_DIRECTION_ONLY_TOP = 3;
+    public static final int SWIPE_DIRECTION_ONLY_BOTTOM = 4;
 
     public static final int DEFAULT_ANIMATION_DURATION = 300;
     public static final int DEFAULT_STACK_SIZE = 3;
@@ -44,13 +45,10 @@ public class SwipeStack extends ViewGroup {
     public static final float DEFAULT_SWIPE_OPACITY = 1f;
     public static final float DEFAULT_SCALE_FACTOR = 1f;
     public static final boolean DEFAULT_DISABLE_HW_ACCELERATION = true;
-
     private static final String KEY_SUPER_STATE = "superState";
     private static final String KEY_CURRENT_INDEX = "currentIndex";
-
     private Adapter mAdapter;
     private Random mRandom;
-
     private int mAllowedSwipeDirections;
     private int mAnimationDuration;
     private int mCurrentViewIndex;
@@ -61,16 +59,15 @@ public class SwipeStack extends ViewGroup {
     private float mSwipeOpacity;
     private float mScaleFactor;
     private boolean mDisableHwAcceleration;
-    private boolean mIsFirstLayout = true;
-
+    private boolean mIsFirstLayout;
     private View mTopView;
     private SwipeHelper mSwipeHelper;
     private DataSetObserver mDataObserver;
-    private SwipeStackListener mListener;
-    private SwipeProgressListener mProgressListener;
+    private SwipeStack.SwipeStackListener mListener;
+    private SwipeStack.SwipeProgressListener mProgressListener;
 
     public SwipeStack(Context context) {
-        this(context, null);
+        this(context, (AttributeSet) null);
     }
 
     public SwipeStack(Context context, AttributeSet attrs) {
@@ -79,12 +76,13 @@ public class SwipeStack extends ViewGroup {
 
     public SwipeStack(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        readAttributes(attrs);
-        initialize();
+        this.mIsFirstLayout = true;
+        this.readAttributes(attrs);
+        this.initialize();
     }
 
     private void readAttributes(AttributeSet attributeSet) {
-        TypedArray attrs = getContext().obtainStyledAttributes(attributeSet, R.styleable.SwipeStack);
+        TypedArray attrs = this.getContext().obtainStyledAttributes(attributeSet, R.styleable.SwipeStack);
 
         try {
             mAllowedSwipeDirections =
@@ -112,360 +110,288 @@ public class SwipeStack extends ViewGroup {
         } finally {
             attrs.recycle();
         }
+
     }
 
     private void initialize() {
-        mRandom = new Random();
-
-        setClipToPadding(false);
-        setClipChildren(false);
-
-        mSwipeHelper = new SwipeHelper(this);
-        mSwipeHelper.setAnimationDuration(mAnimationDuration);
-        mSwipeHelper.setRotation(mSwipeRotation);
-        mSwipeHelper.setOpacityEnd(mSwipeOpacity);
-
-        mDataObserver = new DataSetObserver() {
-            @Override
+        this.mRandom = new Random();
+        this.setClipToPadding(false);
+        this.setClipChildren(false);
+        this.mSwipeHelper = new SwipeHelper(this);
+        this.mSwipeHelper.setAnimationDuration(this.mAnimationDuration);
+        this.mSwipeHelper.setRotation(this.mSwipeRotation);
+        this.mSwipeHelper.setOpacityEnd(this.mSwipeOpacity);
+        this.mDataObserver = new DataSetObserver() {
             public void onChanged() {
                 super.onChanged();
-                invalidate();
-                requestLayout();
+                SwipeStack.this.invalidate();
+                SwipeStack.this.requestLayout();
             }
         };
     }
 
-    @Override
     public Parcelable onSaveInstanceState() {
         Bundle bundle = new Bundle();
-        bundle.putParcelable(KEY_SUPER_STATE, super.onSaveInstanceState());
-        bundle.putInt(KEY_CURRENT_INDEX, mCurrentViewIndex - getChildCount());
+        bundle.putParcelable("superState", super.onSaveInstanceState());
+        bundle.putInt("currentIndex", this.mCurrentViewIndex - this.getChildCount());
         return bundle;
     }
 
-    @Override
     public void onRestoreInstanceState(Parcelable state) {
         if (state instanceof Bundle) {
             Bundle bundle = (Bundle) state;
-            mCurrentViewIndex = bundle.getInt(KEY_CURRENT_INDEX);
-            state = bundle.getParcelable(KEY_SUPER_STATE);
+            this.mCurrentViewIndex = bundle.getInt("currentIndex");
+            state = bundle.getParcelable("superState");
         }
 
         super.onRestoreInstanceState(state);
     }
 
-    @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        if (this.mAdapter != null && !this.mAdapter.isEmpty()) {
+            for (int x = this.getChildCount(); x < this.mNumberOfStackedViews && this.mCurrentViewIndex < this.mAdapter.getCount(); ++x) {
+                this.addNextView();
+            }
 
-        if (mAdapter == null || mAdapter.isEmpty()) {
-            mCurrentViewIndex = 0;
-            removeAllViewsInLayout();
-            return;
+            this.reorderItems();
+            this.mIsFirstLayout = false;
+        } else {
+            this.mCurrentViewIndex = 0;
+            this.removeAllViewsInLayout();
         }
-
-        for (int x = getChildCount();
-             x < mNumberOfStackedViews && mCurrentViewIndex < mAdapter.getCount();
-             x++) {
-            addNextView();
-        }
-
-        reorderItems();
-
-        mIsFirstLayout = false;
     }
 
     private void addNextView() {
-        if (mCurrentViewIndex < mAdapter.getCount()) {
-            View bottomView = mAdapter.getView(mCurrentViewIndex, null, this);
-            bottomView.setTag(R.id.new_view, true);
-
-            if (!mDisableHwAcceleration) {
-                bottomView.setLayerType(LAYER_TYPE_HARDWARE, null);
+        if (this.mCurrentViewIndex < this.mAdapter.getCount()) {
+            View bottomView = this.mAdapter.getView(this.mCurrentViewIndex, (View) null, this);
+            bottomView.setTag(R.id.new_view, Boolean.valueOf(true));
+            if (!this.mDisableHwAcceleration) {
+                bottomView.setLayerType(2, (Paint) null);
             }
 
-            if (mViewRotation > 0) {
-                bottomView.setRotation(mRandom.nextInt(mViewRotation) - (mViewRotation / 2));
+            if (this.mViewRotation > 0) {
+                bottomView.setRotation((float) (this.mRandom.nextInt(this.mViewRotation) - this.mViewRotation / 2));
             }
 
-            int width = getWidth() - (getPaddingLeft() + getPaddingRight());
-            int height = getHeight() - (getPaddingTop() + getPaddingBottom());
-
+            int width = this.getWidth() - (this.getPaddingLeft() + this.getPaddingRight());
+            int height = this.getHeight() - (this.getPaddingTop() + this.getPaddingBottom());
             LayoutParams params = bottomView.getLayoutParams();
             if (params == null) {
-                params = new LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT);
+                params = new LayoutParams(-2, -2);
             }
 
-            int measureSpecWidth = MeasureSpec.AT_MOST;
-            int measureSpecHeight = MeasureSpec.AT_MOST;
-
-            if (params.width == LayoutParams.MATCH_PARENT) {
-                measureSpecWidth = MeasureSpec.EXACTLY;
+            int measureSpecWidth = -2147483648;
+            int measureSpecHeight = -2147483648;
+            if (params.width == -1) {
+                measureSpecWidth = 1073741824;
             }
 
-            if (params.height == LayoutParams.MATCH_PARENT) {
-                measureSpecHeight = MeasureSpec.EXACTLY;
+            if (params.height == -1) {
+                measureSpecHeight = 1073741824;
             }
 
             bottomView.measure(measureSpecWidth | width, measureSpecHeight | height);
-            addViewInLayout(bottomView, 0, params, true);
-
-            mCurrentViewIndex++;
+            this.addViewInLayout(bottomView, 0, params, true);
+            ++this.mCurrentViewIndex;
         }
+
     }
 
     private void reorderItems() {
-        for (int x = 0; x < getChildCount(); x++) {
-            View childView = getChildAt(x);
-            int topViewIndex = getChildCount() - 1;
-
-            int distanceToViewAbove = (topViewIndex * mViewSpacing) - (x * mViewSpacing);
-            int newPositionX = (getWidth() - childView.getMeasuredWidth()) / 2;
-            int newPositionY = distanceToViewAbove + getPaddingTop();
-
-            childView.layout(
-                    newPositionX,
-                    getPaddingTop(),
-                    newPositionX + childView.getMeasuredWidth(),
-                    getPaddingTop() + childView.getMeasuredHeight());
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                childView.setTranslationZ(x);
+        for (int x = 0; x < this.getChildCount(); ++x) {
+            View childView = this.getChildAt(x);
+            int topViewIndex = this.getChildCount() - 1;
+            int distanceToViewAbove = topViewIndex * this.mViewSpacing - x * this.mViewSpacing;
+            int newPositionX = (this.getWidth() - childView.getMeasuredWidth()) / 2;
+            int newPositionY = distanceToViewAbove + this.getPaddingTop();
+            childView.layout(newPositionX, this.getPaddingTop(), newPositionX + childView.getMeasuredWidth(), this.getPaddingTop() + childView.getMeasuredHeight());
+            if (Build.VERSION.SDK_INT >= 21) {
+                childView.setTranslationZ((float) x);
             }
 
-            boolean isNewView = (boolean) childView.getTag(R.id.new_view);
-            float scaleFactor = (float) Math.pow(mScaleFactor, getChildCount() - x);
-
+            boolean isNewView = ((Boolean) childView.getTag(R.id.new_view)).booleanValue();
+            float scaleFactor = (float) Math.pow((double) this.mScaleFactor, (double) (this.getChildCount() - x));
             if (x == topViewIndex) {
-                mSwipeHelper.unregisterObservedView();
-                mTopView = childView;
-                mSwipeHelper.registerObservedView(mTopView, newPositionX, newPositionY);
+                this.mSwipeHelper.unregisterObservedView();
+                this.mTopView = childView;
+                this.mSwipeHelper.registerObservedView(this.mTopView, (float) newPositionX, (float) newPositionY);
             }
 
-            if (!mIsFirstLayout) {
-
+            if (!this.mIsFirstLayout) {
                 if (isNewView) {
-                    childView.setTag(R.id.new_view, false);
-                    childView.setAlpha(0);
-                    childView.setY(newPositionY);
+                    childView.setTag(R.id.new_view, Boolean.valueOf(false));
+                    childView.setAlpha(0.0F);
+                    childView.setY((float) newPositionY);
                     childView.setScaleY(scaleFactor);
                     childView.setScaleX(scaleFactor);
                 }
 
-                childView.animate()
-                        .y(newPositionY)
-                        .scaleX(scaleFactor)
-                        .scaleY(scaleFactor)
-                        .alpha(1)
-                        .setDuration(mAnimationDuration);
-
+                childView.animate().y((float) newPositionY).scaleX(scaleFactor).scaleY(scaleFactor).alpha(1.0F).setDuration((long) this.mAnimationDuration);
             } else {
-                childView.setTag(R.id.new_view, false);
-                childView.setY(newPositionY);
+                childView.setTag(R.id.new_view, Boolean.valueOf(false));
+                childView.setY((float) newPositionY);
                 childView.setScaleY(scaleFactor);
                 childView.setScaleX(scaleFactor);
             }
         }
+
     }
 
     private void removeTopView() {
-        if (mTopView != null) {
-            removeView(mTopView);
-            mTopView = null;
+        if (this.mTopView != null) {
+            this.removeView(this.mTopView);
+            this.mTopView = null;
         }
 
-        if (getChildCount() == 0) {
-            if (mListener != null) mListener.onStackEmpty();
+        if (this.getChildCount() == 0 && this.mListener != null) {
+            this.mListener.onStackEmpty();
         }
+
     }
 
-    @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
         int height = MeasureSpec.getSize(heightMeasureSpec);
-        setMeasuredDimension(width, height);
+        this.setMeasuredDimension(width, height);
     }
 
     public void onSwipeStart() {
-        if (mProgressListener != null) mProgressListener.onSwipeStart(getCurrentPosition());
+        if (this.mProgressListener != null) {
+            this.mProgressListener.onSwipeStart(this.getCurrentPosition());
+        }
+
     }
 
     public void onSwipeProgress(float progress) {
-        if (mProgressListener != null)
-            mProgressListener.onSwipeProgress(getCurrentPosition(), progress);
+        if (this.mProgressListener != null) {
+            this.mProgressListener.onSwipeProgress(this.getCurrentPosition(), progress);
+        }
+
     }
 
     public void onSwipeEnd() {
-        if (mProgressListener != null) mProgressListener.onSwipeEnd(getCurrentPosition());
+        if (this.mProgressListener != null) {
+            this.mProgressListener.onSwipeEnd(this.getCurrentPosition());
+        }
+
     }
 
     public void onViewSwipedToLeft() {
-        if (mListener != null) mListener.onViewSwipedToLeft(getCurrentPosition());
-        removeTopView();
+        if (this.mListener != null) {
+            this.mListener.onViewSwipedToLeft(this.getCurrentPosition());
+        }
+
+        this.removeTopView();
     }
 
     public void onViewSwipedToRight() {
-        if (mListener != null) mListener.onViewSwipedToRight(getCurrentPosition());
-        removeTopView();
+        if (this.mListener != null) {
+            this.mListener.onViewSwipedToRight(this.getCurrentPosition());
+        }
+
+        this.removeTopView();
     }
 
-    /**
-     * Returns the current adapter position.
-     *
-     * @return The current position.
-     */
+    public void onViewSwipedToTop() {
+        if (this.mListener != null) {
+            this.mListener.onViewSwipedToTop(this.getCurrentPosition());
+        }
+
+        this.removeTopView();
+    }
+
+    public void onViewSwipedToBottom() {
+        if (this.mListener != null) {
+            this.mListener.onViewSwipedToBottom(this.getCurrentPosition());
+        }
+
+        this.removeTopView();
+    }
+
     public int getCurrentPosition() {
-        return mCurrentViewIndex - getChildCount();
+        return this.mCurrentViewIndex - this.getChildCount();
     }
 
-    /**
-     * Returns the adapter currently in use in this SwipeStack.
-     *
-     * @return The adapter currently used to display data in this SwipeStack.
-     */
     public Adapter getAdapter() {
-        return mAdapter;
+        return this.mAdapter;
     }
 
-    /**
-     * Sets the data behind this SwipeView.
-     *
-     * @param adapter The Adapter which is responsible for maintaining the
-     *                data backing this list and for producing a view to represent an
-     *                item in that data set.
-     * @see #getAdapter()
-     */
     public void setAdapter(Adapter adapter) {
-        if (mAdapter != null) mAdapter.unregisterDataSetObserver(mDataObserver);
-        mAdapter = adapter;
-        mAdapter.registerDataSetObserver(mDataObserver);
+        if (this.mAdapter != null) {
+            this.mAdapter.unregisterDataSetObserver(this.mDataObserver);
+        }
+
+        this.mAdapter = adapter;
+        this.mAdapter.registerDataSetObserver(this.mDataObserver);
     }
 
-    /**
-     * Returns the allowed swipe directions.
-     *
-     * @return The currently allowed swipe directions.
-     */
     public int getAllowedSwipeDirections() {
-        return mAllowedSwipeDirections;
+        return this.mAllowedSwipeDirections;
     }
 
-    /**
-     * Sets the allowed swipe directions.
-     *
-     * @param directions One of {@link #SWIPE_DIRECTION_BOTH},
-     *                   {@link #SWIPE_DIRECTION_ONLY_LEFT}, or {@link #SWIPE_DIRECTION_ONLY_RIGHT}.
-     */
     public void setAllowedSwipeDirections(int directions) {
-        mAllowedSwipeDirections = directions;
+        this.mAllowedSwipeDirections = directions;
     }
 
-    /**
-     * Register a callback to be invoked when the user has swiped the top view
-     * left / right or when the stack gets empty.
-     *
-     * @param listener The callback that will run
-     */
-    public void setListener(@Nullable SwipeStackListener listener) {
-        mListener = listener;
+    public void setListener(@Nullable SwipeStack.SwipeStackListener listener) {
+        this.mListener = listener;
     }
 
-    /**
-     * Register a callback to be invoked when the user starts / stops interacting
-     * with the top view of the stack.
-     *
-     * @param listener The callback that will run
-     */
-    public void setSwipeProgressListener(@Nullable SwipeProgressListener listener) {
-        mProgressListener = listener;
+    public void setSwipeProgressListener(@Nullable SwipeStack.SwipeProgressListener listener) {
+        this.mProgressListener = listener;
     }
 
-    /**
-     * Get the view from the top of the stack.
-     *
-     * @return The view if the stack is not empty or null otherwise.
-     */
     public View getTopView() {
-        return mTopView;
+        return this.mTopView;
     }
 
-    /**
-     * Programmatically dismiss the top view to the right.
-     */
     public void swipeTopViewToRight() {
-        if (getChildCount() == 0) return;
-        mSwipeHelper.swipeViewToRight();
+        if (this.getChildCount() != 0) {
+            this.mSwipeHelper.swipeViewToRight();
+        }
     }
 
-    /**
-     * Programmatically dismiss the top view to the left.
-     */
     public void swipeTopViewToLeft() {
-        if (getChildCount() == 0) return;
-        mSwipeHelper.swipeViewToLeft();
+        if (this.getChildCount() != 0) {
+            this.mSwipeHelper.swipeViewToLeft();
+        }
     }
 
-    /**
-     * Resets the current adapter position and repopulates the stack.
-     */
+    public void swipeTopViewToTop() {
+        if (this.getChildCount() != 0) {
+            this.mSwipeHelper.swipeViewToTop();
+        }
+    }
+
+    public void swipeTopViewToBottom() {
+        if (this.getChildCount() != 0) {
+            this.mSwipeHelper.swipeViewToBottom();
+        }
+    }
+
     public void resetStack() {
-        mCurrentViewIndex = 0;
-        removeAllViewsInLayout();
-        requestLayout();
+        this.mCurrentViewIndex = 0;
+        this.removeAllViewsInLayout();
+        this.requestLayout();
     }
 
-    /**
-     * Interface definition for a callback to be invoked when the top view was
-     * swiped to the left / right or when the stack gets empty.
-     */
-    public interface SwipeStackListener {
-        /**
-         * Called when a view has been dismissed to the left.
-         *
-         * @param position The position of the view in the adapter currently in use.
-         */
-        void onViewSwipedToLeft(int position);
-
-        /**
-         * Called when a view has been dismissed to the right.
-         *
-         * @param position The position of the view in the adapter currently in use.
-         */
-        void onViewSwipedToRight(int position);
-
-        /**
-         * Called when the last view has been dismissed.
-         */
-        void onStackEmpty();
-    }
-
-    /**
-     * Interface definition for a callback to be invoked when the user
-     * starts / stops interacting with the top view of the stack.
-     */
     public interface SwipeProgressListener {
-        /**
-         * Called when the user starts interacting with the top view of the stack.
-         *
-         * @param position The position of the view in the currently set adapter.
-         */
-        void onSwipeStart(int position);
+        void onSwipeStart(int var1);
 
-        /**
-         * Called when the user is dragging the top view of the stack.
-         *
-         * @param position The position of the view in the currently set adapter.
-         * @param progress Represents the horizontal dragging position in relation to
-         *                 the start position of the drag.
-         */
-        void onSwipeProgress(int position, float progress);
+        void onSwipeProgress(int var1, float var2);
 
-        /**
-         * Called when the user has stopped interacting with the top view of the stack.
-         *
-         * @param position The position of the view in the currently set adapter.
-         */
-        void onSwipeEnd(int position);
+        void onSwipeEnd(int var1);
+    }
+
+    public interface SwipeStackListener {
+        void onViewSwipedToLeft(int var1);
+
+        void onViewSwipedToRight(int var1);
+
+        void onViewSwipedToTop(int var1);
+
+        void onViewSwipedToBottom(int var1);
+
+        void onStackEmpty();
     }
 }
