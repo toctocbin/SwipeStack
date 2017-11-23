@@ -17,14 +17,11 @@
 package link.fls.swipestack;
 
 import android.animation.Animator;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.OvershootInterpolator;
 
 import link.fls.swipestack.util.AnimationUtils;
-
-import static android.content.ContentValues.TAG;
 
 public class SwipeHelper implements View.OnTouchListener {
     private final SwipeStack mSwipeStack;
@@ -150,7 +147,6 @@ public class SwipeHelper implements View.OnTouchListener {
         if(this.mListenForTouchEvents) {
             this.mListenForTouchEvents = false;
             this.mObservedView.animate().cancel();
-            Log.e(TAG, "swipeViewToTop: "+mSwipeStack.getHeight() );
             this.mObservedView.animate().y((float)(-this.mSwipeStack.getHeight()) + this.mObservedView.getY()).rotation(0.0F).alpha(0.0F).setDuration((long)duration).setListener(new AnimationUtils.AnimationEndListener() {
                 public void onAnimationEnd(Animator animation) {
                     SwipeHelper.this.mSwipeStack.onViewSwipedToTop();

@@ -124,8 +124,8 @@ public class SwipeStack extends ViewGroup {
         this.mDataObserver = new DataSetObserver() {
             public void onChanged() {
                 super.onChanged();
-                SwipeStack.this.invalidate();
-                SwipeStack.this.requestLayout();
+                invalidate();
+                requestLayout();
             }
         };
     }
@@ -133,7 +133,7 @@ public class SwipeStack extends ViewGroup {
     public Parcelable onSaveInstanceState() {
         Bundle bundle = new Bundle();
         bundle.putParcelable("superState", super.onSaveInstanceState());
-        bundle.putInt("currentIndex", this.mCurrentViewIndex - this.getChildCount());
+        bundle.putInt("currentIndex", mCurrentViewIndex - getChildCount());
         return bundle;
     }
 
@@ -148,9 +148,9 @@ public class SwipeStack extends ViewGroup {
     }
 
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        if (this.mAdapter != null && !this.mAdapter.isEmpty()) {
-            for (int x = this.getChildCount(); x < this.mNumberOfStackedViews && this.mCurrentViewIndex < this.mAdapter.getCount(); ++x) {
-                this.addNextView();
+        if (mAdapter != null && !mAdapter.isEmpty()) {
+            for (int x = getChildCount(); x < mNumberOfStackedViews && mCurrentViewIndex < mAdapter.getCount(); ++x) {
+                addNextView();
             }
 
             this.reorderItems();
